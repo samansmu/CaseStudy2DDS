@@ -1,0 +1,284 @@
+---
+title: "CaseStudy2"
+author: "Sadik"
+date: "4/11/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## Executive Summary
+##DDSAnalytics is an analytics company that specializes in talent management solutions for Fortune 100 companies. Talent management is defined as the ##iterative process of developing and retaining employees. It may include workforce planning, employee training programs, identifying high-potential ##employees and reducing/preventing voluntary employee turnover (attrition). To gain a competitive edge over its competition, DDSAnalytics is planning to ##leverage data science for talent management. The executive leadership has identified predicting employee turnover as its first application of data ##science for talent management. Before the business green lights the project, they have tasked your data science team to conduct an analysis of existing ##employee data. 
+##We will do detail analysis of employeess attrition and provide solution to clinet Frito Lay. We will finaly identify the top three causes of employees #attrition. I will support my anaylsis using linear regression model.
+
+# Video link of YouTube presentation
+
+
+library(tidyverse)
+library(curl)
+library(class)
+library(e1071)
+library(caret)
+library(plotly)
+library(fuzzyjoin)
+library(RCurl)
+library(selectr)
+library(tidyselect)
+library(mvtnorm)
+library(stringr)
+library(disdat)
+library(carData)
+library(caret)
+library(plotly)
+#library(dbplyr)
+library(dplyr)
+library(ggthemes)
+library(ggplot2)
+library(GGally)
+library(gridExtra)
+library(psych)
+library(ggpubr)
+library(gridGraphics)
+library(reshape2)
+library(tuneGrid)
+library(plyr)
+library(randomForest)
+library(earth)
+library(corrplot)
+library(Metrics)
+
+
+
+
+#View caseStudy2 data
+View(CaseStudy2_data)
+
+#Checking the dimensions, the data set has 870 observations with 36 variables
+dim(CaseStudy2_data)
+
+#Data set features, out of 36 variables there are 35 independent variables and one dependent variable
+names(CaseStudy2_data)
+
+#Data structure
+str(CaseStudy2_data)
+
+#Missing values
+sum(is.na(CaseStudy2_data))
+
+#Data Summary, we don't have NUll values
+summary(CaseStudy2_data)
+
+#Yes or No count for Attrition, there are 730 No, 140 Yes
+table(CaseStudy2_data$Attrition)
+
+# attrition and retention in percent, 84% Retained and 16% attrition
+prop.table(table(CaseStudy2_data$Attrition))
+
+# Attrition plot
+ggplot(data=CaseStudy2_data,aes(Attrition,..count..,fill=factor(Attrition)))+ ggtitle("Yes or No Attrition Histogram")+ geom_bar()
+
+#Employees demographics
+ggplot(data=CaseStudy2_data,aes(Age,..count..,fill=factor(Age)))+ggtitle("Data Count by Age")+ geom_bar()
+ggplot(data=CaseStudy2_data,aes(Gender,..count..,fill=factor(Gender)))+ggtitle("Data Count by Gender")+ geom_bar()
+
+#convert int variables to ordered factors 
+
+names <- c('RelationshipSatisfaction', 'PerformanceRating', 'WorkLifeBalance', 
+           'JobInvolvement', 'JobSatisfaction', 'JobLevel')
+CaseStudy2_data[,names] <- lapply(CaseStudy2_data[,names] , factor, ordered = TRUE)
+str(CaseStudy2_data) 
+
+# explore missing values in each columns
+sapply(CaseStudy2_data, function(x) sum(is.na (x))) 
+
+#Marital Status, Divorced 191, Married 410, Single 269
+maitalstatus <- table(CaseStudy2_data$MaritalStatus)
+
+#replacing some columns with values in data set and removing columns which will not be used to do EDA
+case2 <- CaseStudy2_data %>%
+  mutate(Education = as.factor(if_else(Education == 1,"Below College", if_else(Education == 2, "College", if_else(Education == 3, "Bachelor", if_else(Education == 4, "Master","Doctor")))))
+         ,EnvironmentSatisfaction = as.factor(if_else(EnvironmentSatisfaction == 1,"Low",if_else(EnvironmentSatisfaction == 2, "Medium", if_else(EnvironmentSatisfaction == 3, "High", "Very High"))))
+         ,JobInvolvement = as.factor(if_else(JobInvolvement == 1,"Low",if_else(JobInvolvement == 2, "Medium",if_else(JobInvolvement == 3, "High", "Very High"))))
+         ,JobSatisfaction = as.factor(if_else(JobSatisfaction == 1, "Low",if_else(JobSatisfaction == 2, "Medium",if_else(JobSatisfaction == 3, "High","Very High"))))
+         ,PerformanceRating = as.factor(if_else(PerformanceRating == 1, "Low",if_else(PerformanceRating == 2, "Good", if_else(PerformanceRating == 3, "Excellent", "Outstanding"))))
+         ,RelationshipSatisfaction = as.factor(if_else(RelationshipSatisfaction == 1, "Low",if_else(RelationshipSatisfaction == 2, "Medium", if_else(RelationshipSatisfaction == 3, "High", "Very High"))))
+         ,WorkLifeBalance = as.factor(if_else(WorkLifeBalance == 1, "Bad",if_else(WorkLifeBalance == 2, "Good", if_else(WorkLifeBalance == 3, "Better", "Best"))))
+         ,JobLevel = as.factor(JobLevel)
+         ) %>%
+  select(-EmployeeCount, -EmployeeNumber, -Over18, -StandardHours, -StockOptionLevel, -JobLevel)
+
+#Attrition rate of diffrent factors
+df1 <- case2 %>%
+  group_by(BusinessTravel) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = BusinessTravel, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Business Travel") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+df2 <- case2 %>%
+  group_by(EnvironmentSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = EnvironmentSatisfaction, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Environment Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+df3 <- case2 %>%
+  group_by(JobInvolvement) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobInvolvement, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Job Involvement") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 40))
+
+df4 <- case2 %>%
+  group_by(JobSatisfaction) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobSatisfaction, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Job Satisfaction") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 30))
+
+df5 <- case2 %>%
+  group_by(OverTime) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = OverTime, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Over Time") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 35))
+
+df6 <- case2 %>%
+  group_by(PerformanceRating) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = as.factor(PerformanceRating), y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Performance Rating") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)+ scale_y_continuous(limits = c(0, 20))
+
+grid.arrange(df1, df2, df3, df4, df5, df6, nrow = 2, ncol = 3)
+
+#Attrition rate by Job role and Department
+df7 <- case2 %>%
+  group_by(Department) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = Department, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Department") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)
+
+df8 <- case2 %>%
+  group_by(JobRole) %>%
+  summarise(attrition_rate = round((sum(if_else(Attrition == "Yes",1,0))/n()*100),2)) %>%
+  ggplot(aes(x = JobRole, y = attrition_rate))+ geom_bar(stat = 'identity',fill = "#A1D99B") + ggtitle("Attrition Rate - Job Role") + theme(plot.title = element_text(size =10),axis.text.x = element_text(size =7,angle = 45, hjust = 1),axis.title.x=element_blank()) +geom_text(aes(label=attrition_rate), size = 2.5, position=position_dodge(width=0.2), vjust=-0.25)
+
+grid.arrange(df7, df8, ncol = 2)
+
+# Prediction
+completeData <- CaseStudy2_data
+RowscompleteData = nrow(completeData)
+NoAttrition <- CaseStudy2CompSet_No_Attrition
+RowsNoAttrition = nrow(NoAttrition)
+NoSalary <- CaseStudy2CompSet_No_Salary
+RowsNoSalary = nrow(CaseStudy2CompSet_No_Salary)
+#Merging the data
+mergedData <- rbind.fill(completeData, NoAttrition)
+mergedData
+mergedData <- rbind.fill(completeData, NoSalary)
+mergedData
+nrow(mergedData)
+
+# Changing numeric variables after merging data to Factors
+mergedData$Education <- as.factor(mergedData$Education)
+mergedData$EnvironmentSatisfaction <- as.factor(mergedData$EnvironmentSatisfaction)
+mergedData$JobInvolvement <- as.factor(mergedData$JobInvolvement)
+mergedData$JobLevel <- as.factor(mergedData$JobInvolvement)
+mergedData$JobSatisfaction <- as.factor(mergedData$JobSatisfaction)
+mergedData$PerformanceRating <- as.factor(mergedData$PerformanceRating)
+mergedData$RelationshipSatisfaction <- as.factor(mergedData$RelationshipSatisfaction)
+mergedData$StockOptionLevel <- as.factor(mergedData$StockOptionLevel)
+mergedData$WorkLifeBalance <- as.factor(mergedData$WorkLifeBalance)
+
+# merged data check up
+str(mergedData)
+sapply(mergedData, function(x) sum(is.na(x)))
+
+#making sure the column are same in merged data set and checking NA
+traindata  <- mergedData[(! is.na(mergedData$Attrition)) ,]
+traindata <-  traindata[(! is.na(traindata$MonthlyIncome )), ]
+nrow(traindata) 
+AttrPredData = mergedData[ is.na(mergedData$Attrition ),]
+IncomePredData = mergedData[ is.na(mergedData$MonthlyIncome),]
+AttTrainmergeData =rbind.fill(traindata, AttrPredData) 
+IncomeTrainData = rbind.fill(traindata, IncomePredData)
+
+# the fields we need for EDA
+DataForPred = c(2,3,4,5,6,7,8,9,10,12,13,14,15,16,17,18,19,20,21,22,24,25,26,27,29,30,31,32,33,34,35)
+AttrCol = c(3)
+
+# Using Naive Bayes prediction, test and train set have same length, 36 each
+set.seed(1)
+splitPerc = .7
+iterations = 50
+masterAcc = matrix(nrow = iterations, ncol = 1)
+masterSpec = matrix(nrow = iterations, ncol = 1)
+masterSens = matrix(nrow = iterations, ncol = 1)
+for(j in 1:iterations)
+{
+  Indexs = sample(1:dim(traindata)[1],round(splitPerc * nrow(traindata)))
+  train = traindata[Indexs,]
+  test = traindata[-Indexs,]
+  NaiveModel = naiveBayes(Attrition~.,data = train[DataForPred])
+  
+  NaivePredAttr = predict(NaiveModel, test)
+  CM = confusionMatrix(table(NaivePredAttr, as.factor(test1$Attrition)),positive="Yes")
+  masterAcc[j,1] = CM$overall[1]
+  masterSens[j,1] = CM$byClass[1][[1]]
+  masterSpec[j,1] = CM$byClass[2][[1]]
+}
+MeanAcc = colMeans(masterAcc)
+MeanAcc
+MeanSens = colMeans(masterSens)
+MeanSens
+MeanSpec = colMeans(masterSpec)
+MeanSpec
+
+#Using KNN prediction for Attrition
+trainset <- train %>% select_if(is.numeric)
+testset <- test %>% select_if(is.numeric)
+# Adding Attrition Col
+trainset$Attrition <- train$Attrition
+testset$Attrition <- test$Attrition
+knn <- knn(trainset[,1:15], testset[,1:15], trainset$Attrition, prob = TRUE, k = 1)
+# Confusion Matrix
+confusionMatrix(table(knn, testset$Attrition))
+
+
+# Linear Regression Prediction using Non salary data
+# Histogram Monthly income
+hist(completeData$MonthlyIncome)
+model2 <- lm(MonthlyIncome ~ JobLevel + JobRole + TotalWorkingYears, data = train)
+model2.fit <- predict(model2, newdata = test)
+rmse(test$MonthlyIncome, model2.fit)
+
+# MLR with all predictors used
+model <- lm(MonthlyIncome ~ ., data = train)
+summary(model)
+# test predictions
+model.fit <- predict(model, newdata = NoSalary)
+# RSME
+rmse(test$MonthlyIncome, model.fit)
+
+model2.fit <- predict(model2, newdata = NoSalary)
+
+#Change the factors
+NoSalary$Education <- as.factor(NoSalary$Education)
+NoSalary$EnvironmentSatisfaction <- as.factor(NoSalary$EnvironmentSatisfaction)
+NoSalary$JobInvolvement <- as.factor(NoSalary$JobInvolvement)
+NoSalary$JobLevel <- as.factor(NoSalary$JobInvolvement)
+NoSalary$JobSatisfaction <- as.factor(NoSalary$JobSatisfaction)
+NoSalary$PerformanceRating <- as.factor(NoSalary$PerformanceRating)
+NoSalary$RelationshipSatisfaction <- as.factor(NoSalary$RelationshipSatisfaction)
+NoSalary$StockOptionLevel <- as.factor(NoSalary$StockOptionLevel)
+NoSalary$WorkLifeBalance <- as.factor(NoSalary$WorkLifeBalance)
+
+# Prediction for No Salary data
+predsal <- predict(model2, newdata = NoSalary)
+# merge predictions
+NoSalary$MonthlyIncome <- predsal
+# Exporting to local file
+write.csv(NoSalary, file = "C:/Users/SADIK/OneDrive/Documents/CaseStudy2/Case2PredictionsSadik Salary.csv")
+
+# Plotting actual Vs Predicted
+plot(model2.fit,test$MonthlyIncome, xlab="predicted", ylab="actual")
+abline(a=0,b=1)
+# RMSE 1669.874 which is less than 3000
+rmse(test$MonthlyIncome, model2.fit)
+
+
+
+
+
+
+
+
